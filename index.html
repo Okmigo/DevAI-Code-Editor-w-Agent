@@ -1,0 +1,310 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>App Studio - Ultra (Agent | IDE | Terminal)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/xterm@5.3.0/css/xterm.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.css"/>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/theme/material-darker.min.css"/>
+  <style>
+    :root{ --header-h: 72px; --radius-2xl: 18px; }
+    html, body { height: 100%; }
+    body { font-family: Inter, ui-sans-serif, system-ui; color: #0f172a; background: radial-gradient(120% 120% at 10% 10%, #e0f2fe 0%, #eef2ff 50%, #ffffff 100%); }
+    header { height: var(--header-h); }
+    html { scrollbar-gutter: stable both-edges; }
+
+    .surface { background: rgba(255,255,255,0.88); backdrop-filter: blur(16px); box-shadow: 0 24px 60px rgba(2,6,23,0.10); }
+    .card { border-radius: var(--radius-2xl); }
+    .btn { border-radius: 14px; padding: .55rem .9rem; border: 1px solid rgba(2,6,23,.08); transition: transform .08s ease, background-color .2s ease; }
+    .btn:hover { transform: translateY(-1px); }
+    .btn-primary { background: #0f172a; color:#fff; border-color: #0f172a; }
+    .btn-ghost { background: #fff; }
+    .tab-active { background:#0f172a; color:#fff; }
+
+    .file-item { display:flex; align-items:center; gap:.55rem; padding:.35rem .6rem; border-radius:.6rem; cursor:pointer; }
+    .file-item:hover { background:#eef2ff; }
+    .file-item.active { background:#e0e7ff; color:#111827; }
+    summary { list-style: none; }
+    summary::-webkit-details-marker { display: none; }
+
+    #editor { position: relative; min-height: 380px; border-radius: var(--radius-2xl); overflow: hidden; }
+    .CodeMirror { height: 100%; font-size: 14px; }
+    .fallback-editor { width:100%; height:100%; padding:16px; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Courier New", monospace; font-size: 13px; border:0; outline:none; resize:none; }
+
+    .row-resizer { height: 6px; cursor: row-resize; background: rgba(15,23,42,0.06); border-radius: 4px; }
+
+    .toolbar { white-space: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .toolbar::-webkit-scrollbar { height: 8px; }
+
+    .bubble { border-radius: 18px; padding: 10px 14px; max-width: 85%; }
+    .bubble-user { background:#0f172a; color:white; box-shadow: 0 8px 24px rgba(2,6,23,0.2); }
+    .bubble-ai { background:white; border:1px solid rgba(2,6,23,0.06); box-shadow: 0 10px 30px rgba(2,6,23,0.06); }
+
+    #toast { position: fixed; right: 16px; bottom: 16px; z-index: 9999; }
+
+    /* Create modal */
+    dialog.modal{ border:0; padding:0; border-radius:16px; box-shadow: 0 28px 80px rgba(2,6,23,0.25); }
+    .modal .hd{ padding:12px 16px; border-bottom:1px solid rgba(15,23,42,.08); font-weight:600; }
+    .modal .bd{ padding:16px; }
+    .modal .ft{ padding:12px 16px; border-top:1px solid rgba(15,23,42,.08); display:flex; justify-content:flex-end; gap:8px; }
+  </style>
+</head>
+<body class="h-full">
+  <header class="w-full border-b surface card sticky top-0 z-50">
+    <div class="mx-auto max-w-[1440px] px-5 h-full flex items-center gap-3">
+      <div class="h-9 w-9 rounded-xl bg-gradient-to-tr from-slate-900 via-slate-700 to-slate-900 shadow"></div>
+      <div class="text-[20px] font-extrabold tracking-tight">App Studio</div>
+      <div class="text-xs text-slate-500">Ultra | Agent | IDE | Terminal</div>
+      <div class="flex-1"></div>
+      <div class="toolbar flex items-center gap-2">
+        <button id="newFileBtn" class="btn btn-primary">New File</button>
+        <button id="newFolderBtn" class="btn btn-primary">New Folder</button>
+        <button id="runBtn" class="btn bg-blue-600 text-white border border-blue-600 hover:bg-blue-700">Run</button>
+        <button id="downloadBtn" class="btn bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-700">Download .zip</button>
+        <label class="btn btn-ghost cursor-pointer">Import .zip<input id="uploadZip" type="file" accept=".zip" class="hidden"/></label>
+        <button id="keysBtn" class="btn btn-ghost">Settings</button>
+        <select id="terminalMode" class="btn btn-ghost"><option value="browser" selected>Terminal: Browser</option><option value="remote">Terminal: Remote Pro</option></select>
+        <button id="connectBtn" class="btn btn-ghost">Connect</button>
+        <button id="themeToggle" class="btn btn-ghost">Theme</button>
+        <button id="diagBtn" class="btn btn-ghost">Diagnostics</button>
+        <button id="clearBtn" class="btn btn-ghost">Reset</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="layout" class="h-[calc(100%-var(--header-h))] w-full">
+    <div class="mx-auto max-w-[1440px] h-full grid gap-4 p-4" style="grid-template-columns: 280px 1fr 440px;">
+      <aside id="sidebar" class="surface card overflow-auto">
+        <div class="px-4 pt-3 pb-2 text-[11px] uppercase tracking-wide text-slate-500">Files</div>
+        <ul id="fileTree" class="px-2 pb-6"></ul>
+      </aside>
+
+      <section class="flex flex-col gap-3 min-h-0">
+        <div class="surface card border flex items-center justify-between px-3 py-2 text-xs text-slate-600">
+          <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-emerald-500"></span><span>Editor</span></div>
+          <div class="flex items-center gap-3"><span id="wcStatus" class="text-[11px] text-slate-400">Terminal: disconnected</span></div>
+        </div>
+        <div id="editor" class="surface card flex-1"></div>
+        <div id="rowResizer" class="row-resizer"></div>
+        <div class="surface card h-56 border">
+          <div class="flex items-center justify-between px-3 py-1 text-xs text-slate-600">
+            <div class="flex items-center gap-2"><span>Terminal</span><span class="text-slate-300">-</span><span id="termHint" class="text-[11px] text-slate-400">Browser mode is a sandbox</span></div>
+            <div id="status" class="text-[11px]"></div>
+          </div>
+          <div id="terminal" class="h-[calc(100%-24px)]"></div>
+        </div>
+      </section>
+
+      <aside id="rightPane" class="surface card flex flex-col overflow-hidden">
+        <div class="p-1 border-b bg-white/70 backdrop-blur sticky top-0 z-10">
+          <div class="grid grid-cols-2 gap-1">
+            <button id="tabAgent" class="btn tab-active text-sm flex items-center justify-center gap-2"><span class="h-2 w-2 rounded-full bg-emerald-500"></span>Agent</button>
+            <button id="tabPreview" class="btn text-sm">Preview</button>
+          </div>
+        </div>
+        <div id="agentPanel" class="flex-1 flex flex-col min-h-0">
+          <div class="px-4 py-3 border-b flex items-center gap-2">
+            <div class="h-7 w-7 rounded-lg bg-gradient-to-tr from-slate-900 to-slate-700"></div>
+            <div class="font-semibold">Build Agent</div>
+          </div>
+          <div id="chatScroll" class="flex-1 overflow-y-auto px-4 py-4 space-y-3 bg-slate-50">
+            <div class="grid grid-cols-2 gap-2 text-xs">
+              <button class="btn btn-ghost" data-qa="chatbot">+ Chatbot</button>
+              <button class="btn btn-ghost" data-qa="stripe">+ Stripe</button>
+              <button class="btn btn-ghost" data-qa="auth">+ Auth</button>
+              <button class="btn btn-ghost" data-qa="image">+ Image Gen</button>
+            </div>
+          </div>
+          <div class="border-t p-3 bg-white">
+            <div class="flex items-end gap-2">
+              <textarea id="chatInput" rows="1" placeholder="Describe the app or feature..." class="flex-1 resize-none border rounded-2xl px-3 py-2 focus:outline-none focus:ring-2 focus:ring-slate-300"></textarea>
+              <button id="chatSend" class="h-10 px-4 rounded-2xl btn-primary">Send</button>
+            </div>
+            <div class="mt-2 text-xs text-slate-500">
+              <button id="insertTemplate" class="underline">Insert: Add chatbot template</button>
+            </div>
+          </div>
+        </div>
+        <div id="previewPanel" class="hidden flex-1 flex-col min-h-0">
+          <div class="flex items-center justify-between px-3 py-2 text-xs text-slate-500 border-b">
+            <div class="flex items-center gap-2"><span class="h-2 w-2 rounded-full bg-emerald-500"></span><span>Preview</span></div>
+            <div class="flex items-center gap-2">
+              <select id="devicePicker" class="text-xs border rounded-2xl px-2 py-1">
+                <option value="100%">Desktop</option>
+                <option value="428px">Mobile 428</option>
+                <option value="768px">Tablet 768</option>
+              </select>
+              <button id="refreshBtn" class="btn">Refresh</button>
+            </div>
+          </div>
+          <div class="flex-1 overflow-hidden grid place-items-center bg-slate-50">
+            <iframe id="preview" class="h-full border w-[calc(100%-16px)] rounded-xl bg-white" srcdoc=""></iframe>
+          </div>
+        </div>
+      </aside>
+    </div>
+  </main>
+
+  <!-- Settings modal -->
+  <dialog id="keysModal" class="modal w-[560px] max-w-[95vw]">
+    <form method="dialog" class="bg-white rounded-xl overflow-hidden">
+      <div class="hd"><div class="font-medium">Agent & Integrations</div></div>
+      <div class="bd grid gap-3">
+        <div class="text-xs text-slate-500">Stored locally in your browser for preview only.</div>
+        <label class="grid gap-1"><span class="text-sm">Agent API Base URL</span><input id="agentBaseUrl" type="text" class="border rounded px-2 py-1" placeholder="https://api.your-agent.com" /></label>
+        <label class="grid gap-1"><span class="text-sm">Agent API Key</span><input id="agentKey" type="password" class="border rounded px-2 py-1" placeholder="sk_..." /></label>
+        <label class="grid gap-1"><span class="text-sm">Stripe Secret (test)</span><input id="stripeKey" type="password" class="border rounded px-2 py-1" placeholder="sk_test_..." /></label>
+        <label class="grid gap-1"><span class="text-sm">Supabase URL</span><input id="supabaseUrl" type="text" class="border rounded px-2 py-1" placeholder="https://xyz.supabase.co" /></label>
+        <label class="grid gap-1"><span class="text-sm">Supabase anon key</span><input id="supabaseAnon" type="password" class="border rounded px-2 py-1" placeholder="ey..." /></label>
+        <div class="text-xs text-slate-500">Never ship production secrets in client-side apps.</div>
+      </div>
+      <div class="ft"><button class="btn">Cancel</button><button id="saveKeys" value="default" class="btn btn-primary">Save</button></div>
+    </form>
+  </dialog>
+
+  <!-- Create file/folder modal (replaces window.prompt for canvas safety) -->
+  <dialog id="createModal" class="modal w-[520px] max-w-[95vw]">
+    <form method="dialog" class="bg-white rounded-xl overflow-hidden" id="createForm">
+      <div class="hd">Create</div>
+      <div class="bd grid gap-3">
+        <div class="flex gap-4 text-sm">
+          <label class="flex items-center gap-2"><input type="radio" name="ctype" value="file" checked> File</label>
+          <label class="flex items-center gap-2"><input type="radio" name="ctype" value="folder"> Folder</label>
+        </div>
+        <label class="grid gap-1"><span class="text-sm">Path</span><input id="createPath" type="text" class="border rounded px-2 py-2" placeholder="/about.html or /assets" /></label>
+        <div class="text-xs text-slate-500">Paths always start with a leading slash. Folders are created recursively.</div>
+      </div>
+      <div class="ft"><button id="cancelCreate" class="btn">Cancel</button><button id="confirmCreate" value="default" class="btn btn-primary">Create</button></div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="hidden"></div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xterm@5.3.0/lib/xterm.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/codemirror.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/javascript/javascript.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/css/css.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/xml/xml.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/htmlmixed/htmlmixed.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/mode/markdown/markdown.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/closebrackets.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.16/addon/edit/matchbrackets.min.js"></script>
+
+  <script>
+  // Error reporting
+  window.addEventListener('error', function(e){ var msg = 'Error: ' + (e.message || 'Unknown'); try { termWrite(msg); } catch {} toast(msg); });
+  window.addEventListener('unhandledrejection', function(e){ var r = e.reason || {}; var msg = 'Promise: ' + (r.stack || r.message || String(r)); try { termWrite(msg); } catch {} toast(msg); });
+  function toast(text){ var t = document.getElementById('toast'); t.textContent = text; t.className = 'fixed right-4 bottom-4 bg-black text-white text-xs px-3 py-2 rounded-lg shadow-lg'; t.classList.remove('hidden'); setTimeout(function(){ t.classList.add('hidden'); }, 4200); }
+
+  // In-memory filesystem (ASCII only)
+  var vfs = {
+    '/index.html': '<!doctype html>\n<html>\n<head>\n  <meta charset=\"utf-8\">\n  <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n  <title>Your App</title>\n  <link rel=\"stylesheet\" href=\"/styles.css\">\n</head>\n<body>\n  <main>\n    <h1>Hello</h1>\n    <p>This is your live app preview. Edit files on the left.</p>\n    <button id=\"ping\">Ping</button>\n    <pre id=\"out\"></pre>\n  </main>\n  <script src=\"/main.js\"><\\/script>\n</body>\n</html>',
+    '/main.js': 'document.getElementById(\"ping\").onclick = function () {\n  var keys = window.APP_KEYS || {};\n  document.getElementById(\"out\").textContent = \"Keys: \" + JSON.stringify({ agentBaseUrl: keys.agentBaseUrl || null, agentKey: !!keys.agentKey, stripe: !!keys.stripeKey, supabaseUrl: keys.supabaseUrl || null});\n};',
+    '/styles.css': 'body{font-family: ui-sans-serif, system-ui; padding: 24px;} h1{font-size: 24px; margin-bottom: 8px;} button{padding:8px 12px; border:1px solid #111; border-radius:8px}'
+  };
+
+  var state = { currentPath: '/index.html', editor: null, term: null, dark:false };
+  function $(sel){ return document.querySelector(sel); }
+  function termWrite(s){ try { if (window.state && window.state.term && window.state.term.writeln) window.state.term.writeln(s); } catch(e){} }
+
+  // File tree
+  function ensureDirPath(path){ var parts = path.split('/').filter(Boolean); var cur = ''; for (var i=0;i<parts.length;i++){ cur += '/' + parts[i]; if (i < parts.length-1){ var marker = cur + '/.keep'; if (!(marker in vfs)) vfs[marker] = ''; } } }
+  function buildTree(paths){ var root = {}; for (var pIdx=0; pIdx<paths.length; pIdx++){ var p = paths[pIdx]; var parts = p.split('/').slice(1); var node = root; for (var i=0;i<parts.length;i++){ var part = parts[i]; var isFile = i === parts.length-1 && p.charAt(p.length-1) !== '/'; if (!node[part]) node[part] = { _type: isFile ? 'file' : 'dir', _children: {} }; node = node[part]._children; } } return root; }
+  function renderTree(){ var ul = document.getElementById('fileTree'); ul.innerHTML = ''; var paths = Object.keys(vfs).sort(); var tree = buildTree(paths); (function walk(node, prefix, container){ var names = Object.keys(node).sort(); for (var i=0;i<names.length;i++){ var name = names[i]; var meta = node[name]; var full = prefix + '/' + name; if (meta._type === 'file'){ var li = document.createElement('li'); li.className = 'file-item' + (state.currentPath===full?' active':''); li.innerHTML = '<span class=\"text-slate-400\">●</span><span>'+name+'</span>'; li.onclick = (function(p){ return function(){ openFile(p); }; })(full); container.appendChild(li); } else { var details = document.createElement('details'); details.open = true; var summary = document.createElement('summary'); summary.className = 'px-2 py-1 text-slate-600 hover:bg-slate-100 rounded cursor-pointer'; summary.textContent = name + '/'; details.appendChild(summary); var ul2 = document.createElement('ul'); ul2.className = 'pl-4'; details.appendChild(ul2); container.appendChild(details); walk(meta._children, full, ul2); } } })(tree, '', ul); }
+
+  // Editor (CodeMirror with fallback)
+  function cmModeFromPath(p){ if (/\.html$/i.test(p)) return 'htmlmixed'; if (/\.css$/i.test(p)) return 'css'; if (/\.md$/i.test(p)) return 'markdown'; if (/\.json$/i.test(p)) return {name:'javascript', json:true}; if (/\.ts$/i.test(p) || /\.tsx$/i.test(p)) return 'javascript'; if (/\.js$/i.test(p)) return 'javascript'; return 'javascript'; }
+  function initEditor(){ var host = document.getElementById('editor'); if (!window.CodeMirror){ host.innerHTML = ''; var ta = document.createElement('textarea'); ta.className = 'fallback-editor'; ta.value = vfs[state.currentPath] || ''; host.appendChild(ta); ta.addEventListener('input', function(){ vfs[state.currentPath] = ta.value; }); state.editor = { setValue:function(v){ ta.value=v; }, getValue:function(){ return ta.value; }, setOption:function(){} }; return; } state.editor = CodeMirror(host, { value: vfs[state.currentPath], mode: cmModeFromPath(state.currentPath), theme: state.dark ? 'material-darker' : 'default', lineNumbers: true, lineWrapping: false, autoCloseBrackets: true, matchBrackets: true }); state.editor.on('change', function(){ vfs[state.currentPath] = state.editor.getValue(); }); }
+  function openFile(p){ if (!(p in vfs)) return; state.currentPath = p; renderTree(); var val = vfs[p] || ''; var mode = cmModeFromPath(p); if (state.editor && state.editor.setOption) state.editor.setOption('mode', mode); if (state.editor && state.editor.setValue) state.editor.setValue(val); }
+
+  // Create modal helpers
+  function openCreateModal(kind){ var dlg = document.getElementById('createModal'); var form = document.getElementById('createForm'); var input = document.getElementById('createPath'); var radios = form.elements['ctype']; for (var i=0;i<radios.length;i++){ radios[i].checked = (radios[i].value === kind); }
+    input.value = kind === 'file' ? '/new-file.js' : '/new-folder'; dlg.showModal(); input.focus(); input.select(); }
+  function closeCreateModal(){ var dlg = document.getElementById('createModal'); if (dlg.open) dlg.close(); }
+  function normalizePath(p){ if (!p) return null; p = p.trim(); if (!p) return null; if (p.charAt(0) !== '/') p = '/' + p; return p.replace(/\s+/g,'-'); }
+  function createEntry(kind, rawPath){ var path = normalizePath(rawPath); if (!path) { toast('Invalid path'); return; } if (kind === 'folder'){ var base = path.replace(/\/$/,''); ensureDirPath(base + '/placeholder'); termWrite('Folder created: ' + base); } else { ensureDirPath(path); if (vfs[path]){ toast('File exists: ' + path); return; } vfs[path] = ''; openFile(path); termWrite('File created: ' + path); }
+    renderTree(); }
+
+  // Terminal
+  function initTerminal(){ state.term = new Terminal({ fontSize: 12, convertEol: true }); state.term.open(document.getElementById('terminal')); state.term.writeln('Terminal ready. Connect to start.'); }
+
+  // Preview: inline local assets and inject keys
+  function buildSrcDoc(){ var keys = JSON.stringify(loadKeys()); var keyScript = '<script>window.APP_KEYS = ' + keys + '<' + '/script>'; var html = vfs['/index.html'] || '<!doctype html><html><body><h1>No index.html</h1></body></html>'; function inlineAssets(s){ s = s.replace(/<script\s+[^>]*src=[\"']([^\"']+)[\"'][^>]*><\/script>/g, function(m, src){ if (src.indexOf('http') === 0) return m; var path = src.indexOf('/') === 0 ? src : '/' + src; var code = vfs[path]; if (!code) return m; return '<script>\n' + code.replace(/<\//g,'<\\/') + '\n<\/script>'; }); s = s.replace(/<link\s+[^>]*href=[\"']([^\"']+\.css)[\"'][^>]*>/g, function(m, href){ if (href.indexOf('http') === 0) return m; var path = href.indexOf('/') === 0 ? href : '/' + href; var css = vfs[path]; if (!css) return m; return '<style>\n' + css + '\n</style>'; }); return s; } var out = inlineAssets(html); if (out.indexOf('</body>') !== -1) out = out.replace('</body>', keyScript + '\n</body>'); return out; }
+  function runPreview(){ var srcdoc = buildSrcDoc(); var iframe = document.getElementById('preview'); iframe.setAttribute('srcdoc', srcdoc); document.getElementById('status').textContent = new Date().toLocaleTimeString() + ' - preview updated'; }
+
+  // Zip I/O
+  async function downloadZip(){ var zip = new JSZip(); for (var k in vfs){ if (!vfs.hasOwnProperty(k)) continue; var content = vfs[k]; var clean = k.charAt(0) === '/' ? k.slice(1) : k; zip.file(clean, content); } var blob = await zip.generateAsync({type:'blob'}); var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'project.zip'; a.click(); URL.revokeObjectURL(a.href); }
+  async function importZip(file){ var zip = await JSZip.loadAsync(file); var names = Object.keys(zip.files); for (var i=0;i<names.length;i++){ var fname = names[i]; if (zip.files[fname].dir) continue; var txt = await zip.files[fname].async('string'); var norm = '/' + fname.replace(/^\/+/, ''); vfs[norm] = txt; } renderTree(); if (vfs['/index.html']) openFile('/index.html'); runPreview(); termWrite('Imported zip with ' + Object.keys(zip.files).length + ' entries'); }
+
+  // Keys
+  function loadKeys(){ try { return JSON.parse(localStorage.getItem('appstudio_keys')||'{}'); } catch (e) { return {}; } }
+  function saveKeys(obj){ localStorage.setItem('appstudio_keys', JSON.stringify(obj)); }
+  function openKeysModal(){ var dlg = document.getElementById('keysModal'); var k = loadKeys(); document.getElementById('agentBaseUrl').value = k.agentBaseUrl || ''; document.getElementById('agentKey').value = k.agentKey || ''; document.getElementById('stripeKey').value = k.stripeKey || ''; document.getElementById('supabaseUrl').value = k.supabaseUrl || ''; document.getElementById('supabaseAnon').value = k.supabaseAnon || ''; dlg.showModal(); }
+  function saveKeysFromModal(){ var obj = { agentBaseUrl: document.getElementById('agentBaseUrl').value, agentKey: document.getElementById('agentKey').value, stripeKey: document.getElementById('stripeKey').value, supabaseUrl: document.getElementById('supabaseUrl').value, supabaseAnon: document.getElementById('supabaseAnon').value }; saveKeys(obj); termWrite('Saved preview keys'); }
+
+  // Chat
+  function addMsg(role, text){ var wrap = document.createElement('div'); wrap.className = role==='user' ? 'flex justify-end' : 'flex justify-start'; var bubble = document.createElement('div'); bubble.className = 'bubble ' + (role==='user' ? 'bubble-user' : 'bubble-ai'); bubble.textContent = text; wrap.appendChild(bubble); var sc = document.getElementById('chatScroll'); sc.appendChild(wrap); sc.scrollTop = sc.scrollHeight; }
+  function setThinking(on){ var sc = document.getElementById('chatScroll'); var el = document.getElementById('thinking'); if (on){ if (!el){ el = document.createElement('div'); el.id = 'thinking'; el.className = 'flex gap-2 items-center text-slate-500 text-sm'; el.innerHTML = '<div class="h-2 w-2 rounded-full bg-slate-400 animate-pulse"></div><span>Agent is thinking...</span>'; sc.appendChild(el);} sc.scrollTop = sc.scrollHeight; } else if (el){ el.parentNode && el.parentNode.removeChild(el); } }
+  function mockAgent(text){ var t = String(text || '').toLowerCase(); if (t.indexOf('chatbot') !== -1){ ensureDirPath('/'); if (!vfs['/chat.html']) vfs['/chat.html'] = '<!doctype html><html><body><h2>Chatbot</h2><div id="chat"></div><script src="/chat.js"></script></body></html>'; if (!vfs['/chat.js']) vfs['/chat.js'] = 'console.log("chatbot placeholder")'; renderTree(); return 'Drafted /chat.html and /chat.js. Open and click Preview.'; } if (t.indexOf('stripe') !== -1) return 'Use Stripe test keys in Settings. I can scaffold pricing and checkout next.'; if (t.indexOf('image') !== -1) return 'We can add an image API later. Create a stub?'; if (t.indexOf('auth') !== -1 || t.indexOf('login') !== -1) return 'We will connect Supabase auth and add a login page scaffold.'; return 'Tell me a feature to scaffold for your app.'; }
+  async function sendAgentPrompt(text){ addMsg('user', text); setThinking(true); await new Promise(function(r){ return setTimeout(r, 420); }); setThinking(false); addMsg('assistant', mockAgent(text)); }
+
+  function showAgent(){ document.getElementById('agentPanel').classList.remove('hidden'); document.getElementById('previewPanel').classList.add('hidden'); document.getElementById('tabAgent').classList.add('tab-active'); document.getElementById('tabPreview').classList.remove('tab-active'); }
+  function showPreview(){ document.getElementById('agentPanel').classList.add('hidden'); document.getElementById('previewPanel').classList.remove('hidden'); document.getElementById('tabAgent').classList.remove('tab-active'); document.getElementById('tabPreview').classList.add('tab-active'); runPreview(); }
+
+  // Diagnostics (adds file/folder creation tests)
+  async function runSelfTests(){ var results = []; function pass(n){ results.push('OK ' + n); } function fail(n,e){ results.push('FAIL ' + n + ' - ' + e); }
+    try { if (window.CodeMirror) pass('CodeMirror present'); else pass('Fallback editor active'); } catch(e){ fail('Editor presence', e.message); }
+    try { renderTree(); pass('File tree render'); } catch(e){ fail('File tree', e.message); }
+    try { openFile('/index.html'); pass('Open default file'); } catch(e){ fail('Open default', e.message); }
+    try { var tmp = '/_test.txt'; vfs[tmp] = 'ok'; renderTree(); if (vfs[tmp]) pass('Create file'); else throw new Error('file missing'); delete vfs[tmp]; renderTree(); } catch(e){ fail('Create file', e.message); }
+    try { ensureDirPath('/_folder/sub'); if (vfs['/_folder/.keep'] !== undefined) pass('Create folder'); else throw new Error('folder marker missing'); delete vfs['/_folder/.keep']; } catch(e){ fail('Create folder', e.message); }
+    try { var src = buildSrcDoc(); if (src.indexOf('</body>') !== -1 && src.indexOf('</html>') !== -1) pass('Preview HTML well-formed'); else throw new Error('missing closing tags'); } catch(e){ fail('Preview HTML', e.message); }
+    try { runPreview(); pass('Preview updated'); } catch(e){ fail('Preview update', e.message); }
+    try { addMsg('assistant', 'Diagnostics ok'); pass('Chat append'); } catch(e){ fail('Chat append', e.message); }
+    try { var k = { a:1 }; saveKeys(k); if (loadKeys().a===1) pass('Keys store'); else throw new Error('mismatch'); } catch(e){ fail('Keys store', e.message); }
+    termWrite('Diagnostics\n' + results.join('\n'));
+    toast('Diagnostics complete - check terminal'); }
+
+  // Wiring
+  function wireUI(){
+    document.getElementById('newFileBtn').onclick = function(){ openCreateModal('file'); };
+    document.getElementById('newFolderBtn').onclick = function(){ openCreateModal('folder'); };
+    document.getElementById('confirmCreate').onclick = function(){ var form = document.getElementById('createForm'); var kind = form.elements['ctype'].value; var path = document.getElementById('createPath').value; createEntry(kind, path); closeCreateModal(); };
+    document.getElementById('cancelCreate').onclick = function(){ closeCreateModal(); };
+
+    document.getElementById('runBtn').onclick = showPreview; var rb = document.getElementById('refreshBtn'); if (rb) rb.onclick = runPreview;
+
+    document.getElementById('downloadBtn').onclick = downloadZip; document.getElementById('uploadZip').addEventListener('change', function(e){ var f = e.target.files[0]; if (f) importZip(f); });
+
+    document.getElementById('keysBtn').onclick = openKeysModal; document.getElementById('saveKeys').onclick = saveKeysFromModal;
+
+    document.getElementById('themeToggle').onclick = function(){ state.dark = !state.dark; var theme = state.dark ? 'material-darker' : 'default'; document.body.classList.toggle('bg-slate-950', state.dark); document.body.classList.toggle('text-slate-50', state.dark); if (window.CodeMirror && state.editor && state.editor.setOption) state.editor.setOption('theme', theme); };
+
+    document.getElementById('tabAgent').onclick = showAgent; document.getElementById('tabPreview').onclick = showPreview;
+
+    var input = document.getElementById('chatInput'); document.getElementById('chatSend').onclick = function(){ var val = (input.value || '').trim(); if(!val) return; input.value=''; sendAgentPrompt(val); }; input.addEventListener('keydown', function(e){ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); document.getElementById('chatSend').click(); }}); document.getElementById('insertTemplate').onclick = function(){ input.value = 'Add chatbot with config page and API key placeholder'; input.focus(); };
+    var qa = document.querySelectorAll('[data-qa]'); for (var i=0;i<qa.length;i++){ (function(b){ b.addEventListener('click', function(){ var t = b.getAttribute('data-qa'); input.value = 'Add ' + t + ' to my app'; input.focus(); }); })(qa[i]); }
+
+    var dp = document.getElementById('devicePicker'); if (dp) dp.onchange = function(e){ document.getElementById('preview').style.width = e.target.value; };
+
+    document.getElementById('diagBtn').onclick = runSelfTests;
+
+    addMsg('assistant', 'Welcome. I am your build agent. Describe an app or say "add chatbot", "add stripe", "add auth", "add image".'); showAgent();
+  }
+
+  // Init
+  window.addEventListener('DOMContentLoaded', function(){ renderTree(); initTerminal(); initEditor(); wireUI(); openFile('/index.html'); });
+  </script>
+
+  <!-- Safe stubs to avoid parsing errors in older engines -->
+  <script>
+    function connectWebContainer(){ var statusEl = document.getElementById('wcStatus'); statusEl.textContent = 'Terminal: unavailable here'; termWrite('WebContainer is disabled in this build. Use Remote Pro or a host with COOP/COEP.'); }
+    function connectRemotePTY(){ var isPro = false; if (!isPro){ termWrite('Remote terminal requires Pro.'); document.getElementById('wcStatus').textContent = 'Terminal: Pro required'; } }
+    (function(){ var btn = document.getElementById('connectBtn'); if (btn) btn.onclick = connectWebContainer; })();
+  </script>
+</body>
+</html>
